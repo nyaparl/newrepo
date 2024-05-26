@@ -1,0 +1,10 @@
+version: 0.2
+phases:
+  install:
+    runtime-versions:
+      python: 3.9
+  build:
+    commands:
+      - aws s3 cp Text.txt s3://YOUR-BUCKET-NAME/
+  post_build:
+    commands:
