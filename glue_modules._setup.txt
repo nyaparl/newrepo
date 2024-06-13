@@ -1,0 +1,96 @@
+# Step 1: Create a Python Package
+
+ 1 )  Create a directory for your Python package:
+
+       mkdir my_package
+       cd my_package
+
+ 2)  Add your Python scripts:
+
+      Place the Python script you want to import (e.g., my_script.py) inside the my_package directory.
+
+3)  Create a setup.py file inside the my_package directory to make it a Python package.
+
+from setuptools import setup, find_packages
+setup(
+    name='my_package',
+    version='0.1',
+    packages=find_packages(),
+)
+
+ 4) Zip the package:
+
+  zip -r my_package.zip my_package
+    
+****************************************************************************************************************
+# Step 2: Upload the Package to S3
+
+  1) Upload the zipped package to S3:
+
+  aws s3 cp my_package.zip s3://your-bucket-name/path/to/my_package.zip
+
+*********************************************************************************************************************
+
+# Step 3: Configure the AWS Glue Job
+
+  1) Create or update your Glue job:
+     Go to the AWS Glue Console.
+     Create a new Glue job or edit an existing one.
+
+  2) Specify the Python library path:
+     In the "Job parameters" section, add the S3 path to the zip file as an argument for --additional-python-modules:
+
+     --additional-python-modules s3://your-bucket-name/path/to/my_package.zip
+
+  3) Add the script path:
+     If your Glue job script is not stored in the same zip file, specify the script path in the "Script file path" section.
+
+*************************************************************************************************************************************
+
+# Step 4: Import the Package in Your Glue Script
+
+1) Import your script or package:
+
+  In your Glue job script, import the package or module as you normally would in Python.
+
+    import my_script
+    # Now you can use functions and classes from my_script
+  
+    my_script.my_function()
+    
+**************************************************************************************************************
+Example Glue Job Script
+
+Here’s an example of what your Glue job script might look like:
+
+import sys
+from awsglue.transforms import *
+from awsglue.utils import getResolvedOptions
+from pyspark.context import SparkContext
+from awsglue.context import GlueContext
+from awsglue.job import Job
+
+import my_script  # Importing the external script
+
+args = getResolvedOptions(sys.argv, ['JOB_NAME'])
+
+sc = SparkContext()
+glueContext = GlueContext(sc)
+spark = glueContext.spark_session
+job = Job(glueContext)
+job.init(args['JOB_NAME'], args)
+
+# Use the imported script
+my_script.my_function()
+
+job.commit()
+
+*********************************************************************************
+
+
+
+
+
+
+
+
