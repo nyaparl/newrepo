@@ -1,0 +1,73 @@
+import sys
+from awsglue.transforms import *
+from awsglue.utils import getResolvedOptions
+from awsglue.context import GlueContext
+from pyspark.context import SparkContext
+from pyspark.sql.functions import col, max
+
+# Define arguments for the Glue job
+args = getResolvedOptions(sys.argv, ['JOB_NAME'])
+
+# Create a GlueContext
+sc = SparkContext()
+glueContext = GlueContext(sc)
+spark = glueContext.spark_session
+
+# Define source and target S3 paths
+source_path = "s3://your-source-bucket/your-path/"
+target_path = "s3://your-target-bucket/your-path/"
+
+# Create a DynamicFrame from the S3 source
+dynamic_frame = glueContext.create_dynamic_frame.from_options(
+    connection_type="s3",
+    connection_options={"paths": [source_path]},
+    format="parquet",
+    transformation_ctx="dynamic_frame"
+)
+
+# Convert DynamicFrame to DataFrame to use with PySpark
+data_frame = dynamic_frame.toDF()
+
+# Extract the maximum timestamp processed from the bookmark
+# This assumes you are storing the last processed timestamp as a bookmark
+# Replace 'your_timestamp_column' with the actual timestamp column name
+bookmark_column = 'your_timestamp_column'
+bookmark_key = 'last_processed_timestamp'
+
+try:
+    # Read the last processed timestamp from a metadata store or S3 (for demonstration purposes)
+    # For example, read from an S3 file, DynamoDB, or AWS Glue Data Catalog
+    # Assume last_processed_timestamp is stored as a single value in S3
+    last_processed_timestamp = spark.read.text("s3://your-metadata-bucket/last_processed_timestamp.txt").collect()[0][0]
+except Exception as e:
+    # If there's no existing bookmark, start from the earliest timestamp
+    last_processed_timestamp = '1970-01-01 00:00:00'  # Default to the beginning of time or an appropriate initial value
+
+# Filter the DataFrame based on the last processed timestamp
+filtered_df = data_frame.filter(col(bookmark_column) > last_processed_timestamp)
+
+# Process the filtered data (example transformation)
+transformed_df = filtered_df.filter(col("some_column") > 100)
+
+# Convert DataFrame back to DynamicFrame
+transformed_dynamic_frame = DynamicFrame.fromDF(transformed_df, glueContext, "transformed_dynamic_frame")
+
+# Write the transformed data to the target S3 location
+glueContext.write_dynamic_frame.from_options(
+    frame=transformed_dynamic_frame,
+    connection_type="s3",
+    connection_options={"path": target_path},
+    format="parquet",
+    transformation_ctx="datasink"
+)
+
+# Update the bookmark with the new maximum timestamp processed
+# Get the maximum timestamp from the current batch
+new_max_timestamp = transformed_df.agg(max(bookmark_column)).collect()[0][0]
+
+# Save the new maximum timestamp to a metadata store or S3
+# For demonstration, writing to an S3 file
+spark.createDataFrame([(new_max_timestamp,)], ["timestamp"]).write.mode('overwrite').csv("s3://your-metadata-bucket/last_processed_timestamp.txt")
+
+# Commit job to update bookmark
+glueContext.commit_job()
