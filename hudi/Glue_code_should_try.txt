@@ -1,0 +1,61 @@
+import sys
+from awsglue.transforms import *
+from awsglue.utils import getResolvedOptions
+from pyspark.context import SparkContext
+from awsglue.context import GlueContext
+from awsglue.job import Job
+from pyspark.sql import SparkSession
+
+## @params: [JOB_NAME]
+args = getResolvedOptions(sys.argv, ['JOB_NAME'])
+
+sc = SparkContext()
+glueContext = GlueContext(sc)
+#spark = glueContext.spark_session
+job = Job(glueContext)
+job.init(args['JOB_NAME'], args)
+
+spark = SparkSession.builder \
+    .appName('YourAppName') \
+    .config('spark.serializer', 'org.apache.spark.serializer.KryoSerializer') \
+    .config('spark.sql.hive.convertMetastoreParquet','false') \
+    .getOrCreate()
+
+
+# Define source and target S3 paths
+source_path = "s3://incre-bucket-001/input/"
+target_path = "s3://incre-bucket-001/output/hudi/"
+
+# Create a DynamicFrame from the S3 source
+dynamic_frame = glueContext.create_dynamic_frame.from_options(
+    connection_type="s3",
+    connection_options={"paths": [source_path]},
+    format="csv",
+    transformation_ctx="dynamic_frame"
+)
+
+# Convert DynamicFrame to DataFrame to use with PySpark
+data_frame = dynamic_frame.toDF()
+
+
+# Example Hudi configuration
+hudi_options = {
+    "hoodie.table.name": "my_hudi_table",
+    "hoodie.datasource.write.recordkey.field": "id",
+    "hoodie.datasource.write.partitionpath.field": "partition",
+    "hoodie.datasource.write.precombine.field": "timestamp",
+    "hoodie.datasource.write.table.name": "my_hudi_table",
+    "hoodie.datasource.write.operation": "upsert",
+    "hoodie.upsert.shuffle.parallelism": "2",
+    "hoodie.insert.shuffle.parallelism": "2"
+}
+
+# Read data into a DataFrame
+# source_df = glueContext.create_dynamic_frame.from_catalog(database="source_database", table_name="source_table").toDF()
+
+# Write DataFrame to Hudi
+data_frame.write.format("hudi").options(**hudi_options).mode("append").save(target_path)
+
+
+
+job.commit()
